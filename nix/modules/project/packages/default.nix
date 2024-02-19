@@ -12,6 +12,30 @@ let
 
   tracePackages = k: x:
     project.config.log.traceDebug "${k} ${builtins.toJSON x}" x;
+
+  generateNix = name: source:
+    let
+      self = project.config.basePackages;
+      callCabal2nixWithOptionsExr = name: src: extraCabal2nixOptions:
+        let
+          filter = path: type:
+            pkgs.lib.hasSuffix ".cabal" path ||
+            baseNameOf path == "package.yaml";
+        in
+        self.haskellSrc2nix {
+          inherit name extraCabal2nixOptions;
+          src =
+            if pkgs.lib.canCleanSource src
+            then pkgs.lib.cleanSourceWith { inherit src filter; }
+            else src;
+        };
+      readCabal2NixExpr = drv:
+        project.config.log.traceDebug "using IFD: ${drv.outPath}" "${drv}/default.nix";
+    in
+    readCabal2NixExpr (if lib.types.path.check source
+    then callCabal2nixWithOptionsExr name source ""
+    else self.hackage2nix name source);
+
 in
 {
   options = {
@@ -71,19 +95,25 @@ in
               })
               (self.callPackage src args);
           getOrMkPackage = name: cfg:
+            let
+              x =
+                if builtins.pathExists "${project.config.projectRoot}/.haskellSrc2nix"
+                then { filePath = "${project.config.projectRoot}/.haskellSrc2nix/${name}.nix"; args = { src = cfg.source; }; }
+                else { filePath = generateNix name cfg.source; args = { }; };
+            in
             if lib.types.path.check cfg.source
             then
               log.traceDebug "${name}.callCabal2nix[cached] ${cfg.source}"
-                (build-haskell-package name cfg.source "${project.config.projectRoot}/.haskellSrc2nix/${name}.nix")
+                (build-haskell-package name cfg.source x.filePath x.args)
             else
-              log.traceDebug "${name}.callHackage[cached] ${cfg.source}"
-                (
-                  # (self.callHackage name cfg.source { })
-                  # callPackageKeepDeriver (self.hackage2nix name cfg.source) {}
-                  callPackageKeepDeriver "${project.config.projectRoot}/.haskellSrc2nix/${name}.nix" { }
-                );
+              log.traceDebug
+                (if args == { }
+                then "${name}.callHackage ${cfg.source}"
+                else "${name}.callHackage[cached] ${cfg.source}"
+                )
+                (callPackageKeepDeriver x.filePath x.args);
         in
-        lib.mapAttrs getOrMkPackage project.config.packages;
+        lib.mapAttrs getOrMkPackage (log.traceDebug "${builtins.toJSON (lib.attrNames project.config.packages)}" project.config.packages);
     };
 
     # cabal2nix generated Nix expressions for packages
@@ -91,30 +121,7 @@ in
     packagesNix = lib.mkOption {
       default =
         lib.mapAttrs
-          (name: cfg:
-            let
-              self = project.config.basePackages;
-              callCabal2nixWithOptionsExr = name: src: extraCabal2nixOptions:
-                let
-                  filter = path: type:
-                    pkgs.lib.hasSuffix ".cabal" path ||
-                    baseNameOf path == "package.yaml";
-                in
-                self.haskellSrc2nix {
-                  inherit name extraCabal2nixOptions;
-                  src =
-                    if pkgs.lib.canCleanSource src
-                    then pkgs.lib.cleanSourceWith { inherit src filter; }
-                    else src;
-                };
-              readCabal2NixExpr = drv:
-                "${builtins.trace drv.outPath drv}/default.nix";
-            in
-            readCabal2NixExpr (if lib.types.path.check cfg.source
-            # FIXME: Patch `src` to not point to nix store.
-            then callCabal2nixWithOptionsExr name cfg.source ""
-            else self.hackage2nix name cfg.source)
-          )
+          (name: cfg: generateNix name cfg.source)
           project.config.packages;
     };
   };

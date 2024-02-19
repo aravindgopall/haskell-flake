@@ -109,7 +109,9 @@ in
           drv = pkgs.runCommandNoCC "cabal2nix-generated" { } (
             "mkdir -p $out\n" +
             builtins.concatStringsSep "\n" (
-              lib.mapAttrsToList (name: expr: "sed 's/}:/, src}:/' ${expr} | sed 's/src =.*/inherit src;/' > $out/${name}.nix") config.packagesNix
+              lib.mapAttrsToList
+                (name: expr: "sed 's/}:/, src}:/' ${expr} | sed 's/src =.*/inherit src;/' > $out/${name}.nix")
+                config.packagesNix
             )
           );
         in

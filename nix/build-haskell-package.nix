@@ -49,14 +49,14 @@ let
       (callPackageKeepDeriver expr args);
 in
 
-name: root: expr:
+name: root: expr: args:
 lib.pipe root
   [
     # Avoid rebuilding because of changes in parent directories
     (mkNewStorePath "source-${name}")
     (x: log.traceDebug "${name}.mkNewStorePath ${x.outPath}" x)
 
-    (root: callCabal2nixWithOptions name root expr { })
+    (root: callCabal2nixWithOptions name root expr args)
     # (x: log.traceDebug "${name}.cabal2nixDeriver ${x.cabal2nixDeriver.outPath}" x)
 
     # Make sure all files we use are included in the sdist, as a check
