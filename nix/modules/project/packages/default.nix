@@ -107,7 +107,7 @@ in
                 (build-haskell-package name cfg.source x.filePath x.args)
             else
               log.traceDebug
-                (if args == { }
+                (if x.args == { }
                 then "${name}.callHackage ${cfg.source}"
                 else "${name}.callHackage[cached] ${cfg.source}"
                 )
